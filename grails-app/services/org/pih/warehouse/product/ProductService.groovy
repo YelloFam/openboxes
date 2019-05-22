@@ -307,17 +307,28 @@ class ProductService {
         return getProducts(category, tags, false, params)
     }
 
+	/**
+	 * Get all products that match category, tags, and search parameters.
+	 * @param category
+	 * @param tags
+	 * @param params
+	 * @return
+	 */
+	List<Product> getProducts(Category category, List<Tag> tags, boolean includeInactive, Map params) {
+		return getProducts(category, [], tags, includeInactive, params)
+	}
 
     /**
      * Get all products that match category, tags, and other search parameters.
      *
      * @param category
+	 * @param catalogs
      * @param tags
      * @param params
      * @return
      */
-    def getProducts(Category category, List<Tag> tagsInput, boolean includeInactive, Map params) {
-        log.info "get products where category=" + category + ", tags=" + tagsInput + ", params=" + params
+	List<Product> getProducts(Category category, List<ProductCatalog> catalogsInput, List<Tag> tagsInput, boolean includeInactive, Map params) {
+        log.info "get products where category=" + category + ", catalogs=" + catalogsInput + ", tags=" + tagsInput + ", params=" + params
 
         int max = params.max ? params.int("max") : 10
         int offset = params.offset ? params.int("offset") : 0
@@ -390,8 +401,49 @@ class ProductService {
             if (sortColumn) order(sortColumn, sortOrder)
         }
 
-        return results
+		if (catalogsInput && !tagsInput) {
+			results = getProductsByCatalogs(catalogsInput, category, params.includeCategoryChildren)
+		} else {
+			results += getProductsByCatalogs(catalogsInput, category, params.includeCategoryChildren)
+		}
+
+        return results.unique()
     }
+
+	/**
+	 * Get all products in the given catalog
+	 *
+	 * @param inputCatalogs
+	 * @param category
+	 * @param includeCategoryChildren
+	 * @return
+	 */
+	def getProductsByCatalogs(List<ProductCatalog> inputCatalogs, Category category, includeCategoryChildren) {
+		def products = []
+		for (inputCatalog in inputCatalogs) {
+			def productInstance = ProductCatalog.get(inputCatalog.id)
+			def productsInCatalog = productInstance.productCatalogItems.product
+
+			productsInCatalog.each { product ->
+				if (category) {
+					if (includeCategoryChildren) {
+						def categories = category.children ?: []
+						categories << category
+						println "Categories to search in " + categories
+						if (categories.contains(product.category))
+							products += product
+					} else {
+						if (product.category == category) {
+							products += product
+						}
+					}
+				} else {
+					products += productsInCatalog
+				}
+			}
+		}
+		return products
+	}
 
     /**
      * Get the root category.
